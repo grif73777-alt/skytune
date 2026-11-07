@@ -1,0 +1,53 @@
+name: Build skytune VST3 (Windows)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: DSP self-test (portable C++ tests)
+        shell: bash
+        run: |
+          g++ -std=c++17 -O2 -ISource/dsp tests/dsp_tests.cpp -o dsp_tests
+          ./dsp_tests
+        continue-on-error: true
+
+      - name: Configure
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --target skytune_VST3 --parallel
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse "build/skytune_artefacts/Release/VST3/skytune.vst3" "dist/skytune.vst3"
+          Get-ChildItem -Recurse dist | Select-Object FullName
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: skytune-VST3-Windows
+          path: dist
+          if-no-files-found: error
+
+      - name: Build installer (Inno Setup)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\skytune.iss
+          Get-ChildItem setup-out
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: skytune-setup
+          path: setup-out
+          if-no-files-found: warn
